@@ -12,7 +12,7 @@
 int16_t leftEncoderValue = 0, rightEncoderValue = 0;
 int8_t leftDuty, rightDuty;
 
-uint8_t keyNum;
+uint8_t keyNum, flag;
 uint16_t distVal = 0;
 
 uint8_t gs_data;
