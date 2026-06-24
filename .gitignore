@@ -1,9 +1,9 @@
-*.clangd
-*.ccsproject
-Car/**/.settings/
+# *.clangd
+# *.ccsproject
+# Car/**/.settings/
 Car/**/Debug/
-Car/**/targetConfigs/
-*.bat
+# Car/**/targetConfigs/
+# *.bat
 
 .theia
 .vscode
