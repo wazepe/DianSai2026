@@ -16,7 +16,7 @@ uint8_t keyNum;
 uint16_t distVal = 0;
 
 uint8_t gs_data;
-float gs_value;
+float gs_value;666
 
 void EncoderProcess(void)
 {
