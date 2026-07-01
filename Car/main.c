@@ -18,6 +18,8 @@ uint16_t distVal = 0;
 uint8_t gs_data;
 float gs_value;
 
+ParsedData_t pkt;
+
 void EncoderProcess(void)
 {
     leftEncoderValue = Encoder_GetCount(LEFT_ENCODER);
@@ -68,6 +70,22 @@ void GSProcess(void)
     gs_value = Gray_Sensor_Read_All(&gs_data);
 }
 
+void BSProcess(void)
+{
+    if (BlueSerial_IsPacketReady()) {
+        if (BlueSerial_ParsePacket(&pkt)) {
+            if (strcmp(pkt.fields[0], "key") == 0) {
+                int val = atoi(pkt.fields[1]);
+                BlueSerial_Printf("key:%d\r\n", val);
+            }
+            if (strcmp(pkt.fields[0], "slider") == 0) {
+                int val = atoi(pkt.fields[1]);
+                BlueSerial_Printf("slider:%d\r\n", val);
+            }
+        }
+    }
+}
+
 void oledProcess(void)
 {
     OLED_Printf(00, 00, OLED_6X8, "Yaw:%+07.2f", bno08x_data.yaw);
@@ -82,7 +100,7 @@ void oledProcess(void)
     OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
 
     OLED_ShowBinNum(00, 40, gs_data, 8, OLED_6X8);
-    OLED_Printf(00, 40, OLED_6X8, "GS:%+5.1f", gs_value);
+    OLED_Printf(64, 40, OLED_6X8, "GS:%+5.1f", gs_value);
     
     // 主循环是否刷新
     OLED_ShowNum(92, 56, g_sysTick_1ms_u32, 6, OLED_6X8);
@@ -111,6 +129,7 @@ int main(void)
         motorProcess();
         ultrasonicProcess();
         GSProcess();
+        BSProcess();
         oledProcess();
     }
 }
