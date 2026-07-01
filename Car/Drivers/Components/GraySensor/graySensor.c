@@ -41,7 +41,7 @@ float Gray_Sensor_Read_All(uint8_t* sensor_value)
 {
     uint8_t i, count = 0;
     static float lastGrayVule;
-    float grayVule = 0.0f;
+    float _GrayVule = 0.0f, grayVule = 0.0f;
 
     for (i = 0; i < 8; i++) {
         _select_channel(i);
@@ -62,5 +62,11 @@ float Gray_Sensor_Read_All(uint8_t* sensor_value)
         lastGrayVule = grayVule;
     }
 
-    return grayVule / (float)count;
+    _GrayVule = grayVule / (float)count;
+
+    if (_GrayVule > 8.0f) {
+        _GrayVule = 8.0f;
+    }
+
+    return _GrayVule;
 }
