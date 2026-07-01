@@ -26,6 +26,8 @@ const QEI1     = QEI.addInstance();
 const QEI2     = QEI.addInstance();
 const SYSCTL   = scripting.addModule("/ti/driverlib/SYSCTL");
 const SYSTICK  = scripting.addModule("/ti/driverlib/SYSTICK");
+const TIMER    = scripting.addModule("/ti/driverlib/TIMER", {}, false);
+const TIMER1   = TIMER.addInstance();
 const UART     = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1    = UART.addInstance();
 const UART2    = UART.addInstance();
@@ -212,6 +214,14 @@ SYSTICK.interruptPriority = "3";
 SYSTICK.periodEnable      = true;
 SYSTICK.interruptEnable   = true;
 SYSTICK.systickEnable     = true;
+
+TIMER1.$name              = "TIMER_SYS";
+TIMER1.timerMode          = "PERIODIC";
+TIMER1.timerPeriod        = "10 ms";
+TIMER1.timerClkPrescale   = 32;
+TIMER1.interrupts         = ["ZERO"];
+TIMER1.interruptPriority  = "0";
+TIMER1.peripheral.$assign = "TIMG14";
 
 UART1.$name                            = "UART_BNO08X";
 UART1.targetBaudRate                   = 115200;

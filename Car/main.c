@@ -8,9 +8,7 @@
 #include "ultrasonic.h"
 #include "graySensor.h"
 #include "blueSerial.h"
-
-int16_t leftEncoderValue = 0, rightEncoderValue = 0;
-int8_t leftDuty, rightDuty;
+#include "pid.h"
 
 uint8_t keyNum, flag;
 uint16_t distVal = 0;
@@ -20,43 +18,47 @@ float gs_value;
 
 ParsedData_t pkt;
 
-void EncoderProcess(void)
-{
-    leftEncoderValue = Encoder_GetCount(LEFT_ENCODER);
-    rightEncoderValue = Encoder_GetCount(RIGHT_ENCODER);
-}
+PID_t leftMotorPID = {
+    .Kp = 3.8f,
+    .Ki = 0.25f,
+    .Kd = 0.0f,
+
+    .OutMax = 100.0f,
+    .OutMin = -100.0f,
+
+    .OutOffset = 0.0f,
+
+    .ErrorIntMax = 800.0f,
+    .ErrorIntMin = -800.0f,
+};
+
+PID_t rightMotorPID = {
+    .Kp = 3.8f,
+    .Ki = 0.25f,
+    .Kd = 0.0f,
+
+    .OutMax = 100.0f,
+    .OutMin = -100.0f,
+
+    .OutOffset = 0.0f,
+
+    .ErrorIntMax = 800.0f,
+    .ErrorIntMin = -800.0f,
+};
 
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
         keyNum = 1;
-        leftDuty = 10;
-        rightDuty = -10;
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
         keyNum = 2;
-        leftDuty = -10;
-        rightDuty = 10;
     }
     if (Key_Check(GPIO_KEY_III_PIN, KEY_SINGLE)) {
         keyNum = 3;
     }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
         keyNum = 4;
-        leftDuty = 0;
-        rightDuty = 0;
-    }
-}
-
-void motorProcess(void)
-{
-    static int8_t pLeftDuty, pRightDuty;
-
-    // 检查是否有任何变化
-    if (pLeftDuty != leftDuty || pRightDuty != rightDuty) {
-        pLeftDuty = leftDuty;
-        pRightDuty = rightDuty;
-        Load(pLeftDuty, pRightDuty);
     }
 }
 
@@ -74,26 +76,25 @@ void BSProcess(void)
 {
     if (BlueSerial_IsPacketReady()) {
         if (BlueSerial_ParsePacket(&pkt)) {
-            if (strcmp(pkt.fields[0], "key") == 0) {
-                int val = atoi(pkt.fields[1]);
-                BlueSerial_Printf("key:%d\r\n", val);
-            }
             if (strcmp(pkt.fields[0], "slider") == 0) {
-                int val = atoi(pkt.fields[1]);
-                BlueSerial_Printf("slider:%d\r\n", val);
+                uint8_t val = atoi(pkt.fields[1]);
+                if (val == 4) {
+                    leftMotorPID.Target = atof(pkt.fields[2]);
+                    rightMotorPID.Target = leftMotorPID.Target;
+                }
             }
         }
     }
+
+    BlueSerial_Printf("[plot,%f,%f]", leftMotorPID.Actual, rightMotorPID.Actual);
 }
 
 void oledProcess(void)
 {
     OLED_Printf(00, 00, OLED_6X8, "Yaw:%+07.2f", bno08x_data.yaw);
 
-    OLED_Printf(00, 10, OLED_6X8, "LE:%+06d", leftEncoderValue);
-    OLED_Printf(64, 10, OLED_6X8, "RE:%+06d", rightEncoderValue);
-    OLED_Printf(00, 20, OLED_6X8, "LDuty:%+03d", leftDuty);
-    OLED_Printf(64, 20, OLED_6X8, "RDuty:%+03d", rightDuty);
+    OLED_Printf(00, 10, OLED_6X8, "LE:%+06.0f", leftMotorPID.Actual);
+    OLED_Printf(64, 10, OLED_6X8, "RE:%+06.0f", rightMotorPID.Actual);
 
     OLED_Printf(00, 30, OLED_6X8, "KEY%0d", keyNum);
 
@@ -120,16 +121,30 @@ int main(void)
     Ultrasonic_Init();
     BlueSerial_Init();
 
-    BlueSerial_Printf("MSPM0G3519_Init_OK");
+    PID_Init(&leftMotorPID);
+    PID_Init(&rightMotorPID);
+
+    NVIC_EnableIRQ(TIMER_SYS_INST_INT_IRQN);
+    DL_TimerG_startCounter(TIMER_SYS_INST);
     
     while (1)
     {
-        EncoderProcess();
         keyProcess();
-        motorProcess();
         ultrasonicProcess();
         GSProcess();
         BSProcess();
         oledProcess();
     }
+}
+
+void TIMER_SYS_INST_IRQHandler(void)
+{
+    // 获取实际值
+    leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
+    rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
+
+    PID_Update(&leftMotorPID);
+    PID_Update(&rightMotorPID);
+
+    Load(leftMotorPID.Out, rightMotorPID.Out);
 }
