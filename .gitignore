@@ -1,0 +1,11 @@
+*.clangd
+*.ccsproject
+Car/**/.settings/
+Car/**/Debug/
+Car/**/targetConfigs/
+*.bat
+
+.theia
+.vscode
+.claude
+word
