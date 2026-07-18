@@ -121,11 +121,9 @@ void oledProcess(void)
 
     OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
 
-    OLED_ShowBinNum(00, 40, gs_data, 8, OLED_6X8);
-    OLED_Printf(64, 40, OLED_6X8, "GS:%+5.1f", linePID.Actual);
-    
-    // 主循环是否刷新
-    OLED_ShowNum(92, 56, g_sysTick_1ms_u32, 6, OLED_6X8);
+    // OLED_ShowBinNum(00, 40, gs_data, 8, OLED_6X8);
+    OLED_Printf(00, 40, OLED_6X8, "LTar:%+5.2f", linePID.Target);
+    OLED_Printf(64, 40, OLED_6X8, "LAct:%+5.2f", linePID.Actual);
     OLED_Update();
 }
 
@@ -168,7 +166,7 @@ void TIMER_SYS_INST_IRQHandler(void)
     leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
     rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
 
-    linePID.Actual = Gray_Sensor_Read_All(&gs_data);
+    linePID.Actual = Gray_Sensor_Read_Filtered(&gs_data);
     PID_Update(&linePID);
 
     leftMotorPID.Target = leftMotorPID.Target - linePID.Out;
@@ -177,5 +175,5 @@ void TIMER_SYS_INST_IRQHandler(void)
     PID_Update(&leftMotorPID);
     PID_Update(&rightMotorPID);
 
-    Load(leftMotorPID.Out, rightMotorPID.Out);
+    // Load(leftMotorPID.Out, rightMotorPID.Out);
 }
