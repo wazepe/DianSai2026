@@ -9,6 +9,7 @@
 #include "graySensor.h"
 #include "blueSerial.h"
 #include "pid.h"
+#include "filter.h"
 
 uint8_t keyNum;
 uint16_t distVal = 0;
@@ -16,6 +17,7 @@ uint16_t distVal = 0;
 uint8_t gs_data;
 
 ParsedData_t pkt;
+LowPassFilter_t grayFilter;
 
 PID_t leftMotorPID = {
     .Kp = 3.8f,
@@ -97,7 +99,7 @@ void BSProcess(void)
             if (strcmp(pkt.fields[0], "slider") == 0) {
                 uint8_t val = atoi(pkt.fields[1]);
                 if (val == 1) {
-                    linePID.Kp = atof(pkt.fields[2]);
+                    grayFilter.alpha = atof(pkt.fields[2]);
                 } else if (val == 2) {
                     linePID.Ki = atof(pkt.fields[2]);
                 }  else if (val == 3) {
@@ -106,8 +108,8 @@ void BSProcess(void)
             }
         }
     }
-
-    BlueSerial_Printf("[plot,%f,%f]", linePID.Target, linePID.Actual);
+    
+    BlueSerial_Printf("[plot,%f,%f]", Gray_Sensor_Read_All(&gs_data), linePID.Actual);
 }
 
 void oledProcess(void)
@@ -119,7 +121,7 @@ void oledProcess(void)
 
     OLED_Printf(00, 30, OLED_6X8, "KEY%0d", keyNum);
 
-    OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
+    OLED_Printf(64, 30, OLED_6X8, "a:%4.2f", grayFilter.alpha);
 
     // OLED_ShowBinNum(00, 40, gs_data, 8, OLED_6X8);
     OLED_Printf(00, 40, OLED_6X8, "LTar:%+5.2f", linePID.Target);
@@ -143,6 +145,7 @@ int main(void)
     PID_Init(&leftMotorPID);
     PID_Init(&rightMotorPID);
     PID_Init(&linePID);
+    LowPassFilter_Init(&grayFilter,0.3f,0.1f);
     // 读取当前灰度值作为目标，避免初始误差
     linePID.Target = Gray_Sensor_Read_All(&gs_data);
     linePID.Actual = linePID.Target;  // 保持一致
@@ -166,14 +169,21 @@ void TIMER_SYS_INST_IRQHandler(void)
     leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
     rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
 
-    linePID.Actual = Gray_Sensor_Read_Filtered(&gs_data);
+    linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data));
     PID_Update(&linePID);
 
     leftMotorPID.Target = leftMotorPID.Target - linePID.Out;
     rightMotorPID.Target = rightMotorPID.Target + linePID.Out;
 
+    // 添加限幅保护
+    if (leftMotorPID.Target > 50.0f) leftMotorPID.Target = 50.0f;
+    if (leftMotorPID.Target < -50.0f) leftMotorPID.Target = -50.0f;
+
+    if (rightMotorPID.Target > 50.0f) rightMotorPID.Target = 50.0f;
+    if (rightMotorPID.Target < -50.0f) rightMotorPID.Target = -50.0f;
+
     PID_Update(&leftMotorPID);
     PID_Update(&rightMotorPID);
 
-    // Load(leftMotorPID.Out, rightMotorPID.Out);
+    Load(leftMotorPID.Out, rightMotorPID.Out);
 }

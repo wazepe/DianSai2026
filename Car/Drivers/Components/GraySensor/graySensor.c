@@ -1,6 +1,6 @@
 #include "graySensor.h"
 
-#define FILTER_ALPHA 0.3f
+// #define FILTER_ALPHA 0.3f
 
 #define SENSOR_AD0_WRITE(X) \
     do { \
@@ -73,12 +73,12 @@ float Gray_Sensor_Read_All(uint8_t* sensor_value)
     return _GrayVule;
 }
 
-// 一阶低通滤波
-float Gray_Sensor_Read_Filtered(uint8_t* sensor_value)
-{
-    static float filtered_value = 4.5f;  // 初始为中心值
-    float raw_value = Gray_Sensor_Read_All(sensor_value);
+// // 一阶低通滤波
+// float Gray_Sensor_Read_Filtered(uint8_t* sensor_value)
+// {
+//     static float filtered_value = 4.5f;  // 初始为中心值
+//     float raw_value = Gray_Sensor_Read_All(sensor_value);
 
-    filtered_value = FILTER_ALPHA * raw_value + (1 - FILTER_ALPHA) * filtered_value;
-    return filtered_value;
-}
+//     filtered_value = FILTER_ALPHA * raw_value + (1 - FILTER_ALPHA) * filtered_value;
+//     return filtered_value;
+// }
