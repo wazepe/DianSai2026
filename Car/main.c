@@ -8,6 +8,8 @@
 #include "ultrasonic.h"
 #include "graySensor.h"
 #include "blueSerial.h"
+#include "lqkj.h"
+
 #include "pid.h"
 
 uint8_t keyNum;
@@ -61,6 +63,11 @@ PID_t linePID = {
     .Target = 4.5f,
 };
 
+Gimbal_t gimbal;
+float target_yaw = 0.0f;
+float target_pitch = 0.0f;
+int16_t speed = 200;         // RPM
+
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
@@ -97,11 +104,13 @@ void BSProcess(void)
             if (strcmp(pkt.fields[0], "slider") == 0) {
                 uint8_t val = atoi(pkt.fields[1]);
                 if (val == 1) {
-                    linePID.Kp = atof(pkt.fields[2]);
+                    // linePID.Kp = atof(pkt.fields[2]);
+                    target_pitch = atof(pkt.fields[2]);
                 } else if (val == 2) {
-                    linePID.Ki = atof(pkt.fields[2]);
+                    // linePID.Ki = atof(pkt.fields[2]);
+                    target_yaw = atof(pkt.fields[2]);
                 }  else if (val == 3) {
-                    linePID.Kd = atof(pkt.fields[2]);
+                    // linePID.Kd = atof(pkt.fields[2]);
                 } 
             }
         }
@@ -140,6 +149,15 @@ int main(void)
     Ultrasonic_Init();
     BlueSerial_Init();
 
+    Gimbal_Init(&gimbal);
+    
+    // 上电初始化
+    bool init_done = false;
+    while (!init_done) {
+        init_done = Gimbal_PowerOnInit(&gimbal, g_sysTick_1ms_u32);
+        Gimbal_Poll(&gimbal, g_sysTick_1ms_u32);
+    }
+
     PID_Init(&leftMotorPID);
     PID_Init(&rightMotorPID);
     PID_Init(&linePID);
@@ -162,18 +180,20 @@ int main(void)
 
 void TIMER_SYS_INST_IRQHandler(void)
 {
-    // 获取实际值
-    leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
-    rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
+    // // 获取实际值
+    // leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
+    // rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
 
-    linePID.Actual = Gray_Sensor_Read_Filtered(&gs_data);
-    PID_Update(&linePID);
+    // linePID.Actual = Gray_Sensor_Read_Filtered(&gs_data);
+    // PID_Update(&linePID);
 
-    leftMotorPID.Target = leftMotorPID.Target - linePID.Out;
-    rightMotorPID.Target = rightMotorPID.Target + linePID.Out;
+    // leftMotorPID.Target = leftMotorPID.Target - linePID.Out;
+    // rightMotorPID.Target = rightMotorPID.Target + linePID.Out;
 
-    PID_Update(&leftMotorPID);
-    PID_Update(&rightMotorPID);
+    // PID_Update(&leftMotorPID);
+    // PID_Update(&rightMotorPID);
 
     // Load(leftMotorPID.Out, rightMotorPID.Out);
+
+    Gimbal_SetTarget(&gimbal, target_yaw, target_pitch, speed);
 }

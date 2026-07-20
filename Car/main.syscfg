@@ -261,7 +261,9 @@ UART2.rxPinConfig.onlyInternalResistor = scripting.forceWrite(false);
 UART2.rxPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
 UART2.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric11";
 
-UART3.$name                            = "UART_B";
+UART3.$name                            = "UART_YT";
+UART3.targetBaudRate                   = 115200;
+UART3.enableFIFO                       = true;
 UART3.peripheral.$assign               = "UART3";
 UART3.peripheral.rxPin.$assign         = "PA27";
 UART3.peripheral.txPin.$assign         = "PA26";

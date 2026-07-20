@@ -4,10 +4,15 @@
 #include "bno080.h"
 #include "key.h"
 #include "blueSerial.h"
+#include "lqkj.h"
+
+extern Gimbal_t gimbal;
 
 void SysTick_Handler(void)
 {
     g_sysTick_1ms_u32 ++;
+
+    Gimbal_Poll(&gimbal, g_sysTick_1ms_u32);
     
 #ifdef GPIO_KEY_PORT
     Key_Tick();
