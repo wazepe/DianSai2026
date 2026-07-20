@@ -28,6 +28,7 @@ const SYSCTL   = scripting.addModule("/ti/driverlib/SYSCTL");
 const SYSTICK  = scripting.addModule("/ti/driverlib/SYSTICK");
 const TIMER    = scripting.addModule("/ti/driverlib/TIMER", {}, false);
 const TIMER1   = TIMER.addInstance();
+const TIMER2   = TIMER.addInstance();
 const UART     = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1    = UART.addInstance();
 const UART2    = UART.addInstance();
@@ -222,6 +223,14 @@ TIMER1.timerClkPrescale   = 32;
 TIMER1.interrupts         = ["ZERO"];
 TIMER1.interruptPriority  = "0";
 TIMER1.peripheral.$assign = "TIMG14";
+
+TIMER2.$name              = "TIMER_1ms";
+TIMER2.timerClkDiv        = 8;
+TIMER2.timerPeriod        = "1 ms";
+TIMER2.timerMode          = "PERIODIC";
+TIMER2.interrupts         = ["ZERO"];
+TIMER2.interruptPriority  = "2";
+TIMER2.peripheral.$assign = "TIMG7";
 
 UART1.$name                            = "UART_BNO08X";
 UART1.targetBaudRate                   = 115200;
