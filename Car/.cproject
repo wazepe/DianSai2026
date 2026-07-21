@@ -51,6 +51,7 @@
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/BNO080"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/OLED"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Algorithms/Filter"/>
+                                    <listOptionValue value="${PROJECT_ROOT}/Drivers/Algorithms/Trap_profile"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Algorithms/PID"/>
                                     <listOptionValue value="${PROJECT_ROOT}"/>
                                     <listOptionValue value="${PROJECT_ROOT}/${ConfigName}"/>
