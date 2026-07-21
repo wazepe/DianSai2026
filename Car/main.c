@@ -173,8 +173,8 @@ void oledProcess(void)
     // OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
 
     OLED_ShowBinNum(64, 30, gs_data, 8, OLED_6X8);
-    OLED_Printf(00, 40, OLED_6X8, "LTar:%+5.2f", linePID.Target);
-    OLED_Printf(64, 40, OLED_6X8, "LAct:%+5.2f", linePID.Actual);
+    OLED_Printf(00, 40, OLED_6X8, "Tar:%5.2f", AnglePID.Target);
+    OLED_Printf(64, 40, OLED_6X8, "Act:%5.2f", AnglePID.Actual);
     OLED_Update();
 }
 
@@ -226,7 +226,7 @@ int main(void)
 
 void TIMER_1ms_INST_IRQHandler(void)
 {
-   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data)); 
+   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data));
 }
 
 void TIMER_SYS_INST_IRQHandler(void)
@@ -234,6 +234,8 @@ void TIMER_SYS_INST_IRQHandler(void)
      // 获取实际值
     leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
     rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
+
+    AnglePID.Actual = bno08x_data.yaw;
 
     // 状态转移（带消抖）
     if (gs_data == 0) {
@@ -254,8 +256,10 @@ void TIMER_SYS_INST_IRQHandler(void)
     switch (carMode) {
         case MODE_LOST_LINE:
             // 无黑线：放弃累计修正，回到基础速度直行
-            leftMotorPID.Target = baseSpeed;
-            rightMotorPID.Target = baseSpeed;
+            PID_Update(&AnglePID);
+            leftMotorPID.Target = baseSpeed - AnglePID.Out;
+            rightMotorPID.Target = baseSpeed + AnglePID.Out;
+            AnglePID.Target = 0.0f;
             break;
 
         case MODE_FOLLOW:
@@ -273,7 +277,7 @@ void TIMER_SYS_INST_IRQHandler(void)
 
     if (rightMotorPID.Target > 50.0f) rightMotorPID.Target = 50.0f;
     if (rightMotorPID.Target < -50.0f) rightMotorPID.Target = -50.0f;
-
+    
     PID_Update(&leftMotorPID);
     PID_Update(&rightMotorPID);
 
