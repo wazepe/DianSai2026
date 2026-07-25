@@ -17,7 +17,9 @@ typedef struct {
 void TrapProfile_Init(TrapProfile_t *tp, float dt, float max_vel, float accel, float decel);
 void TrapProfile_SetTarget(TrapProfile_t *tp, float target);
 float TrapProfile_Update(TrapProfile_t *tp);
-bool TrapProfile_IsDone(TrapProfile_t *tp);
 void TrapProfile_Reset(TrapProfile_t *tp, float start_pos);
+
+void TrapProfile_SpeedMode(TrapProfile_t *tp, float target_speed);
+float TrapProfile_SpeedUpdate(TrapProfile_t *tp);
 
 #endif

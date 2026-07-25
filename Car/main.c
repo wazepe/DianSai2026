@@ -9,16 +9,26 @@
 #include "graySensor.h"
 #include "blueSerial.h"
 #include "lqkj.h"
-
 #include "pid.h"
 #include "filter.h"
 #include "trap_profile.h"
+
+#define LOST_LINE_THRESHOLD  7   // 连续7次无黑线才判定为丢线
+#define FOLLOW_THRESHOLD     5   // 连续5次有黑线才恢复巡线
+
+#define ANGLE_PID_DEADBAND   0.1f // 角度环输入死区阈值：角度误差在此范围内时 PID 不输出
+
 uint8_t keyNum;
 uint16_t distVal = 0;
 
 uint8_t gs_data;
 float baseSpeed = 0.0f;
 uint8_t lostLineTimes = 0;  //丢线次数计数器
+uint8_t lostLineCnt = 0;
+uint8_t followCnt = 0;
+
+float trun1 = 36.0f;
+float trun2 = 144.0f;
 
 typedef enum {
     MODE_FOLLOW,    // 正常巡线
@@ -27,18 +37,12 @@ typedef enum {
 
 CarMode_t carMode = MODE_LOST_LINE;
 
-#define LOST_LINE_THRESHOLD  5   // 连续5次无黑线才判定为丢线
-#define FOLLOW_THRESHOLD     3   // 连续3次有黑线才恢复巡线
-
-#define ANGLE_PID_DEADBAND   0.1f // 角度环输入死区阈值：角度误差在此范围内时 PID 不输出
-
-uint8_t lostLineCnt = 0;
-uint8_t followCnt = 0;
 
 
 ParsedData_t pkt;
 LowPassFilter_t grayFilter;
 TrapProfile_t AngleProfile;
+TrapProfile_t SpeedProfile;
 
 PID_t leftMotorPID = {
     .Kp = 3.8f,
@@ -85,9 +89,9 @@ PID_t linePID = {
 };
 
 PID_t AnglePID = {
-    .Kp = 1.0f,     
+    .Kp = 0.9f,     
     .Ki = 0.0f,     
-    .Kd = 0.5f,     
+    .Kd = 0.1f,     
 
     .OutMax = 30.0f,   
     .OutMin = -30.0f,
@@ -107,22 +111,22 @@ void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
         keyNum = 1;
-        baseSpeed = 10.0f;
-        TrapProfile_SetTarget(&AngleProfile, 38.0f);
+        TrapProfile_SpeedMode(&SpeedProfile, 10.0f);  // 平滑到10
+        TrapProfile_SetTarget(&AngleProfile, trun1);
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
         keyNum = 2;
-        baseSpeed = 20.0f;
-        TrapProfile_SetTarget(&AngleProfile, 38.5f);
+        TrapProfile_SpeedMode(&SpeedProfile, 20.0f);
+        TrapProfile_SetTarget(&AngleProfile, trun1);
     }
     if (Key_Check(GPIO_KEY_III_PIN, KEY_SINGLE)) {
         keyNum = 3;
-        baseSpeed = 30.0f;
-        TrapProfile_SetTarget(&AngleProfile, 39.5f);
+        TrapProfile_SpeedMode(&SpeedProfile, 30.0f);
+        TrapProfile_SetTarget(&AngleProfile, trun1);
     }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
         keyNum = 4;
-        baseSpeed = 0.0f;
+        TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // 平滑到0
         leftMotorPID.Out = 0.0f;
         rightMotorPID.Out = 0.0f;
         linePID.Actual = 4.5f;
@@ -143,10 +147,10 @@ void BSProcess(void)
             if (strcmp(pkt.fields[0], "slider") == 0) {
                 uint8_t val = atoi(pkt.fields[1]);
                 if (val == 1) {
-                    AnglePID.Kp = atof(pkt.fields[2]);
+                    trun1 = atof(pkt.fields[2]);
                     // target_pitch = atof(pkt.fields[2]);
                 } else if (val == 2) {
-                    AnglePID.Ki = atof(pkt.fields[2]);
+                    trun2 = atof(pkt.fields[2]);
                     // target_yaw = atof(pkt.fields[2]);
                 } else if (val == 3) {
                     AnglePID.Kd = atof(pkt.fields[2]);
@@ -157,10 +161,11 @@ void BSProcess(void)
             if (strcmp(pkt.fields[0], "key") == 0) {
                 uint8_t keyval = atoi(pkt.fields[1]);
                 if (keyval == 1){
-                    baseSpeed = 0.0f;
+                    TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // ← 加上这行
                     leftMotorPID.Out = 0.0f;
                     rightMotorPID.Out = 0.0f;
                     linePID.Actual = 4.5f;
+                    TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
                     lostLineTimes = 0;
                 }
                 if (keyval == 2){
@@ -169,19 +174,22 @@ void BSProcess(void)
                 if (keyval == 3){
                     TrapProfile_SetTarget(&AngleProfile, 0);
                 }
+                if (keyval == 4){
+                    TrapProfile_SetTarget(&AngleProfile, 90);
+                }
             }
         }
     }
 
-    BlueSerial_Printf("[plot,%f,%f]", linePID.Target, linePID.Actual);
+    BlueSerial_Printf("[plot,%d]", lostLineTimes);
 }
 
 void oledProcess(void)
 {
     OLED_Printf(00, 00, OLED_6X8, "Yaw:%+07.2f", bno08x_data.yaw);
 
-    OLED_Printf(00, 10, OLED_6X8, "kp:%04.2f", AnglePID.Kp);
-    OLED_Printf(64, 10, OLED_6X8, "ki:%04.3f", AnglePID.Ki);
+    OLED_Printf(00, 10, OLED_6X8, "t1:%6.1f", trun1);
+    OLED_Printf(64, 10, OLED_6X8, "t2:%6.1f", trun2);
     OLED_Printf(74, 00, OLED_6X8, "kd:%04.2f", AnglePID.Kd);
 
     // OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
@@ -233,7 +241,8 @@ int main(void)
 
     LowPassFilter_Init(&grayFilter, 0.58f, 0.1f);
     PID_Init(&AnglePID);
-    TrapProfile_Init(&AngleProfile,0.01f,180.0f,360.0f,360.0f);
+    TrapProfile_Init(&AngleProfile,0.01f,360.0f,720.0f,720.0f);
+    TrapProfile_Init(&SpeedProfile, 0.01f, 0, 50.0f, 50.0f); 
     // 目标固定为黑线中心（8路灰度位置 1~8 的中点）
     linePID.Target = 4.5f;
     linePID.Actual = Gray_Sensor_Read_All(&gs_data);
@@ -265,8 +274,9 @@ void TIMER_SYS_INST_IRQHandler(void)
     rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
 
     AnglePID.Actual = bno08x_data.yaw;
+    baseSpeed = TrapProfile_SpeedUpdate(&SpeedProfile);
 
-    // 状态转移（带消抖）
+    // // 状态转移（带消抖）
     if (gs_data == 0) {
         lostLineCnt++;
         followCnt = 0;
@@ -276,10 +286,10 @@ void TIMER_SYS_INST_IRQHandler(void)
                 if (lostLineTimes % 2 == 1) {
                 // 奇数次
                     TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
-                    TrapProfile_SetTarget(&AngleProfile, 142.0f);
+                    TrapProfile_SetTarget(&AngleProfile, trun2);
                 } else {
                     TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
-                    TrapProfile_SetTarget(&AngleProfile, 38.0f);
+                    TrapProfile_SetTarget(&AngleProfile, trun1);
                 }
             }
             carMode = MODE_LOST_LINE;
@@ -297,13 +307,14 @@ void TIMER_SYS_INST_IRQHandler(void)
         case MODE_LOST_LINE: {
             // 无黑线
             AnglePID.Target = TrapProfile_Update(&AngleProfile);
-            float err = AngleErrorNormalize(AnglePID.Target, bno08x_data.yaw);
-            AnglePID.Actual = AnglePID.Target - err;
+            float angle_err = AngleErrorNormalize(AnglePID.Target, bno08x_data.yaw);
+            AnglePID.Actual = AnglePID.Target - angle_err;
 
-            if (err < ANGLE_PID_DEADBAND && err > -ANGLE_PID_DEADBAND) {
-                // 角度误差在死区内，PID 不参与调控，输出清零
+            // 死区处理
+            if (fabsf(angle_err) < ANGLE_PID_DEADBAND) {
                 AnglePID.Out = 0.0f;
                 AnglePID.ErrorInt = 0.0f;
+                AnglePID.Error0 = 0.0f;
             } else {
                 PID_Update(&AnglePID);
             }
