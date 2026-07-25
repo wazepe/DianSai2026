@@ -124,32 +124,28 @@ void ultrasonicProcess(void)
 
 void BSProcess(void)
 {
-    if (BlueSerial_IsPacketReady()) {
-        if (BlueSerial_ParsePacket(&pkt)) {
-            if (strcmp(pkt.fields[0], "slider") == 0) {
-                uint8_t val = atoi(pkt.fields[1]);
-                if (val == 1) {
-                    linePID.Kp = atof(pkt.fields[2]);
-                    // target_pitch = atof(pkt.fields[2]);
-                } else if (val == 2) {
-                    linePID.Ki = atof(pkt.fields[2]);
-                    // target_yaw = atof(pkt.fields[2]);
-                } else if (val == 3) {
-                    linePID.Kd = atof(pkt.fields[2]);
-                } else if (val == 4) {
-                    grayFilter.alpha = atof(pkt.fields[2]);
-                } 
+    while (BlueSerial_ReadPacket(&pkt)) {
+        if (strcmp(pkt.fields[0], "slider") == 0) {
+            uint8_t val = atoi(pkt.fields[1]);
+            if (val == 1) {
+                linePID.Kp = atof(pkt.fields[2]);
+            } else if (val == 2) {
+                linePID.Ki = atof(pkt.fields[2]);
+            } else if (val == 3) {
+                linePID.Kd = atof(pkt.fields[2]);
+            } else if (val == 4) {
+                grayFilter.alpha = atof(pkt.fields[2]);
             }
-            if (strcmp(pkt.fields[0], "key") == 0) {
-                uint8_t keyval = atoi(pkt.fields[1]);
-                if (keyval == 1){
-                    baseSpeed = 0.0f;
-                    leftMotorPID.Target = 0.0f;
-                    rightMotorPID.Target = 0.0f;
-                    leftMotorPID.Out = 0.0f;
-                    rightMotorPID.Out = 0.0f;
-                    linePID.Actual = 4.5f;
-                }
+        }
+        if (strcmp(pkt.fields[0], "key") == 0) {
+            uint8_t keyval = atoi(pkt.fields[1]);
+            if (keyval == 1){
+                baseSpeed = 0.0f;
+                leftMotorPID.Target = 0.0f;
+                rightMotorPID.Target = 0.0f;
+                leftMotorPID.Out = 0.0f;
+                rightMotorPID.Out = 0.0f;
+                linePID.Actual = 4.5f;
             }
         }
     }

@@ -288,8 +288,11 @@ UART3.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric13";
 
 UART4.$name                            = "UART_BLE";
 UART4.targetBaudRate                   = 115200;
-UART4.enabledInterrupts                = ["RX"];
-UART4.interruptPriority                = "1";
+UART4.enableFIFO                       = true;
+UART4.rxTimeoutValue                   = 4;
+UART4.enabledInterrupts                = ["RX_TIMEOUT_ERROR"];
+UART4.interruptPriority                = "2";
+UART4.enabledDMARXTriggers             = "DL_UART_DMA_INTERRUPT_RX";
 UART4.peripheral.$assign               = "UART1";
 UART4.peripheral.rxPin.$assign         = "PA9";
 UART4.peripheral.txPin.$assign         = "PA8";
@@ -302,6 +305,11 @@ UART4.rxPinConfig.hideOutputInversion  = scripting.forceWrite(false);
 UART4.rxPinConfig.onlyInternalResistor = scripting.forceWrite(false);
 UART4.rxPinConfig.passedPeripheralType = scripting.forceWrite("Digital");
 UART4.rxPinConfig.$name                = "ti_driverlib_gpio_GPIOPinGeneric15";
+UART4.DMA_CHANNEL_RX.$name             = "DMA_BLE";
+UART4.DMA_CHANNEL_RX.addressMode       = "f2b";
+UART4.DMA_CHANNEL_RX.srcLength         = "BYTE";
+UART4.DMA_CHANNEL_RX.dstLength         = "BYTE";
+UART4.DMA_CHANNEL_RX.transferMode      = "FULL_CH_REPEAT_BLOCK";
 
 const ProjectConfig              = scripting.addModule("/ti/project_config/ProjectConfig", {}, false);
 ProjectConfig.migrationCondition = true;
@@ -311,4 +319,5 @@ ProjectConfig.migrationCondition = true;
  * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
  * re-solve from scratch.
  */
-UART1.DMA_CHANNEL_RX.peripheral.$suggestSolution = "DMA_CH0";
+UART1.DMA_CHANNEL_RX.peripheral.$suggestSolution = "DMA_CH1";
+UART4.DMA_CHANNEL_RX.peripheral.$suggestSolution = "DMA_CH0";

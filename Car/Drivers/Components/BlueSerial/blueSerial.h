@@ -7,7 +7,9 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#define BLUE_SERIAL_RING_BUFFER_SIZE  100  // 环形缓冲区大小
+#define BLUE_SERIAL_DMA_BUF_SIZE      32   // 覆盖式接收，保持最新数据即可
+#define BLUE_SERIAL_DMA_CHAN          DMA_BLE_CHAN_ID
+
 #define BLUE_SERIAL_MAX_STRING_LEN    100  // 最大字符串长度
 #define BLUE_SERIAL_MAX_FIELDS        6    // 最大字段数
 #define BLUE_SERIAL_FIELD_MAX_LEN     20   // 每个字段最大长度
@@ -26,23 +28,22 @@ typedef struct {
     uint8_t isValid;
 } ParsedData_t;
 
-extern uint8_t rxTempBuffer;
+// DMA 接收相关变量
+extern volatile uint8_t  bleDmaRxBuf[BLUE_SERIAL_DMA_BUF_SIZE];
+extern volatile uint16_t bleDmaRxLen;      // 本次 timeout 接收到的字节数
+extern volatile uint8_t  bleDmaRxReady;    // 数据就绪标志
 
 // 函数声明
 void BlueSerial_Init(void);
+void BlueSerial_DMA_Init(void);
 void BlueSerial_Printf(const char *format, ...);
 
-// 环形缓冲区操作
-uint8_t BlueSerial_Put(uint8_t Byte);
-uint8_t BlueSerial_Get(uint8_t *Byte);
-uint16_t BlueSerial_Length(void);
-void BlueSerial_ClearRingBuffer(void);
+// 高级接口：轮询 DMA 并解析出一个完整包
+// 返回 1：成功读取一包到 outData
+// 返回 0：当前无完整包
+uint8_t BlueSerial_ReadPacket(ParsedData_t *outData);
 
-// 数据包解析
-uint8_t BlueSerial_IsPacketReady(void);
-uint8_t BlueSerial_ParsePacket(ParsedData_t *outData);
+// 重置解析器（放弃当前正在接收的包）
 void BlueSerial_ResetParser(void);
-
-void BlueSerial_IRQHandler(uint8_t RxData);
 
 #endif
