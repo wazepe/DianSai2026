@@ -27,8 +27,8 @@ uint8_t lostLineTimes = 0;  //丢线次数计数器
 uint8_t lostLineCnt = 0;
 uint8_t followCnt = 0;
 
-float trun1 = 36.0f;
-float trun2 = 144.0f;
+float trun1 = 37.5f;
+float trun2 = 142.5f;
 
 typedef enum {
     MODE_FOLLOW,    // 正常巡线
@@ -239,7 +239,6 @@ int main(void)
     PID_Init(&rightMotorPID);
     PID_Init(&linePID);
 
-    LowPassFilter_Init(&grayFilter, 0.58f, 0.1f);
     PID_Init(&AnglePID);
     TrapProfile_Init(&AngleProfile,0.01f,360.0f,720.0f,720.0f);
     TrapProfile_Init(&SpeedProfile, 0.01f, 0, 50.0f, 50.0f); 
@@ -247,6 +246,7 @@ int main(void)
     linePID.Target = 4.5f;
     linePID.Actual = Gray_Sensor_Read_All(&gs_data);
     linePID.Actual1 = linePID.Actual;
+    LowPassFilter_Init(&grayFilter, 0.58f, 0.1f, linePID.Actual);
 
     NVIC_EnableIRQ(TIMER_SYS_INST_INT_IRQN);
     DL_TimerG_startCounter(TIMER_SYS_INST);
