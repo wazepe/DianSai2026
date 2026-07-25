@@ -200,11 +200,11 @@ int main(void)
     PID_Init(&rightMotorPID);
     PID_Init(&linePID);
 
-    LowPassFilter_Init(&grayFilter, 0.58f, 0.1f);
     // 目标固定为黑线中心（8路灰度位置 1~8 的中点）
     linePID.Target = 4.5f;
     linePID.Actual = Gray_Sensor_Read_All(&gs_data);
     linePID.Actual1 = linePID.Actual;
+    LowPassFilter_Init(&grayFilter, 0.58f, 0.1f, linePID.Actual);
 
     NVIC_EnableIRQ(TIMER_SYS_INST_INT_IRQN);
     DL_TimerG_startCounter(TIMER_SYS_INST);
