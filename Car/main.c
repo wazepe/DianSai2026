@@ -241,7 +241,7 @@ int main(void)
 
     PID_Init(&AnglePID);
     TrapProfile_Init(&AngleProfile,0.01f,360.0f,720.0f,720.0f);
-    TrapProfile_Init(&SpeedProfile, 0.01f, 0, 50.0f, 50.0f); 
+    TrapProfile_Init(&SpeedProfile, 0.01f, 0, 50.0f, 80.0f); 
     // 目标固定为黑线中心（8路灰度位置 1~8 的中点）
     linePID.Target = 4.5f;
     linePID.Actual = Gray_Sensor_Read_All(&gs_data);
