@@ -37,7 +37,7 @@ _Bool Read_OUT_value(void)
     return DL_GPIO_readPins(GPIO_GS_PORT, GPIO_GS_IN_PIN);
 }
 
-float Gray_Sensor_Read_All(uint8_t* sensor_value)
+float Gray_Sensor_Read_All(uint8_t* sensor_value, uint8_t mask)
 {
     uint8_t i, count = 0;
     static float lastGrayVule = 4.5f;
@@ -48,8 +48,10 @@ float Gray_Sensor_Read_All(uint8_t* sensor_value)
         delay_cycles(CPUCLK_FREQ / 1000000);  // 延时1us 读取数据
         if (Read_OUT_value()) {
             *sensor_value |= (0x01 << i);
-            count ++;
-            grayVule += (i + 1);
+            if (mask & (0x01 << i)) {
+                count ++;
+                grayVule += (i + 1);
+            }
         } else {
             *sensor_value &= ~(0x01 << i);
         }

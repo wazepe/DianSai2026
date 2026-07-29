@@ -13,35 +13,25 @@
 #include "filter.h"
 #include "trap_profile.h"
 
-#define LOST_LINE_THRESHOLD  7   // 连续7次无黑线才判定为丢线
-#define FOLLOW_THRESHOLD     5   // 连续5次有黑线才恢复巡线
-
-#define ANGLE_PID_DEADBAND   0.1f // 角度环输入死区阈值：角度误差在此范围内时 PID 不输出
-
 uint8_t keyNum;
 uint16_t distVal = 0;
 
 uint8_t gs_data;
 float baseSpeed = 0.0f;
-uint8_t lostLineTimes = 0;  //丢线次数计数器
-uint8_t lostLineCnt = 0;
-uint8_t followCnt = 0;
 
-float trun1 = 37.5f;
-float trun2 = 142.5f;
+uint32_t runTimer_ms = 0;    // 运行计时器(ms)
+uint8_t  timerRunning = 0;   // 计时器运行标志
+uint8_t  tracingEnabled = 0; // 寻迹使能: 0=关闭, 1=开启
 
-typedef enum {
-    MODE_FOLLOW,    // 正常巡线
-    MODE_LOST_LINE, // 无黑线
-} CarMode_t;
-
-CarMode_t carMode = MODE_LOST_LINE;
-
-
+float speed = 20.0f;
+float speed2 = 15.0f;
+float straightFactor = 0.35f;     // 直线PID削弱系数
+uint8_t  curveDebounceCnt = 0;     // 弯道确认计数
+uint8_t  curveDebounceThresh = 4;  // 弯道确认阈值(连续非直线次数)
+uint16_t curveCount = 0;           // 进入弯道次数
 
 ParsedData_t pkt;
 LowPassFilter_t grayFilter;
-TrapProfile_t AngleProfile;
 TrapProfile_t SpeedProfile;
 
 PID_t leftMotorPID = {
@@ -73,9 +63,13 @@ PID_t rightMotorPID = {
 };
 
 PID_t linePID = {
-    .Kp = 2.76f,
+    .Kp = 2.76f,            
     .Ki = 0.015f,
     .Kd = 1.3f,
+
+    // .Kp = 2.50f,            
+    // .Ki = 0.01f,
+    // .Kd = 1.2f,
 
     .OutMax = 100.0f,
     .OutMin = -100.0f,
@@ -88,49 +82,46 @@ PID_t linePID = {
     .Target = 4.5f,
 };
 
-PID_t AnglePID = {
-    .Kp = 0.9f,     
-    .Ki = 0.0f,     
-    .Kd = 0.1f,     
-
-    .OutMax = 30.0f,   
-    .OutMin = -30.0f,
-
-    .ErrorIntMax = 200.0f,
-    .ErrorIntMin = -200.0f,
-
-    .OutOffset = 0.0f,
-};
-
 Gimbal_t gimbal;
 float target_yaw = 0.0f;
 float target_pitch = 0.0f;
-int16_t speed = 200;         // RPM
+// int16_t speed = 200;         // RPM
+
+#define GS_MASK 0x3C  // 0b00111100, 只取中间4路(通道2~5)计算位置
 
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
         keyNum = 1;
-        TrapProfile_SpeedMode(&SpeedProfile, 10.0f);  // 平滑到10
-        TrapProfile_SetTarget(&AngleProfile, trun1);
+        runTimer_ms = 0;
+        timerRunning = 1;
+        tracingEnabled = 1;
+        curveCount = 0;
+        TrapProfile_SpeedMode(&SpeedProfile, speed);
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
         keyNum = 2;
-        TrapProfile_SpeedMode(&SpeedProfile, 20.0f);
-        TrapProfile_SetTarget(&AngleProfile, trun1);
+        runTimer_ms = 0;
+        timerRunning = 1;
+        tracingEnabled = 1;
+        curveCount = 0;
+        TrapProfile_SpeedMode(&SpeedProfile, speed2);
     }
-    if (Key_Check(GPIO_KEY_III_PIN, KEY_SINGLE)) {
-        keyNum = 3;
-        TrapProfile_SpeedMode(&SpeedProfile, 30.0f);
-        TrapProfile_SetTarget(&AngleProfile, trun1);
-    }
+    // if (Key_Check(GPIO_KEY_III_PIN, KEY_SINGLE)) {
+    //     keyNum = 3;
+    //     runTimer_ms = 0;
+    //     timerRunning = 1;
+    //     tracingEnabled = 1;
+    //     TrapProfile_SpeedMode(&SpeedProfile, 30.0f);
+    // }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
         keyNum = 4;
+        timerRunning = 0;
+        tracingEnabled = 0;
         TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // 平滑到0
         leftMotorPID.Out = 0.0f;
         rightMotorPID.Out = 0.0f;
         linePID.Actual = 4.5f;
-        lostLineTimes = 0;
     }
 }
 
@@ -147,70 +138,63 @@ void BSProcess(void)
             if (strcmp(pkt.fields[0], "slider") == 0) {
                 uint8_t val = atoi(pkt.fields[1]);
                 if (val == 1) {
-                    trun1 = atof(pkt.fields[2]);
+                    linePID.Kp = atof(pkt.fields[2]);
                     // target_pitch = atof(pkt.fields[2]);
                 } else if (val == 2) {
-                    trun2 = atof(pkt.fields[2]);
+                    linePID.Ki = atof(pkt.fields[2]);
                     // target_yaw = atof(pkt.fields[2]);
                 } else if (val == 3) {
-                    AnglePID.Kd = atof(pkt.fields[2]);
+                    linePID.Kd = atof(pkt.fields[2]);
                 } else if (val == 4) {
-                    grayFilter.alpha = atof(pkt.fields[2]);
-                } 
+                    speed = atof(pkt.fields[2]);
+                } else if (val == 5) {
+                    straightFactor = atof(pkt.fields[2]);
+                } else if (val == 6) {
+                    curveDebounceThresh = (uint8_t)atoi(pkt.fields[2]);
+                }
+
             }
             if (strcmp(pkt.fields[0], "key") == 0) {
                 uint8_t keyval = atoi(pkt.fields[1]);
                 if (keyval == 1){
+                    timerRunning = 0;
+                    tracingEnabled = 0;
                     TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // ← 加上这行
                     leftMotorPID.Out = 0.0f;
                     rightMotorPID.Out = 0.0f;
                     linePID.Actual = 4.5f;
-                    TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
-                    lostLineTimes = 0;
                 }
                 if (keyval == 2){
-                    TrapProfile_SetTarget(&AngleProfile, 180);
-                }
-                if (keyval == 3){
-                    TrapProfile_SetTarget(&AngleProfile, 0);
-                }
-                if (keyval == 4){
-                    TrapProfile_SetTarget(&AngleProfile, 90);
+                    runTimer_ms = 0;
+                    timerRunning = 1;
+                    tracingEnabled = 1;
+                    TrapProfile_SpeedMode(&SpeedProfile, speed);
                 }
             }
         }
     }
-
-    BlueSerial_Printf("[plot,%d]", lostLineTimes);
+    // BlueSerial_Printf("[plot,%d]", lostLineTimes);
 }
 
 void oledProcess(void)
 {
-    OLED_Printf(00, 00, OLED_6X8, "Yaw:%+07.2f", bno08x_data.yaw);
+    OLED_Printf(00, 0, OLED_6X8, "Spd:%3.1f", speed);
+    OLED_Printf(64, 0, OLED_6X8, "Spd2:%3.1f", speed2);
 
-    OLED_Printf(00, 10, OLED_6X8, "t1:%6.1f", trun1);
-    OLED_Printf(64, 10, OLED_6X8, "t2:%6.1f", trun2);
-    OLED_Printf(74, 00, OLED_6X8, "kd:%04.2f", AnglePID.Kd);
+    OLED_Printf(00, 10, OLED_6X8, "Lkp:%5.3f", linePID.Kp);
+    OLED_Printf(64, 10, OLED_6X8, "Lki:%5.3f", linePID.Ki);
 
-    // OLED_Printf(64, 30, OLED_6X8, "D:%04d", distVal);
+    OLED_Printf(00, 20, OLED_6X8, "Lkd:%5.3f", linePID.Kd);
+    OLED_Printf(64, 20, OLED_6X8, "SF:%4.2f", straightFactor);
 
-    OLED_ShowBinNum(64, 30, gs_data, 8, OLED_6X8);
-    OLED_Printf(00, 40, OLED_6X8, "Tar:%5.2f", AnglePID.Target);
-    OLED_Printf(64, 40, OLED_6X8, "Act:%5.2f", AnglePID.Actual);
+    // 显示运行时间 (秒, 保留1位小数)
+    OLED_Printf(00, 30, OLED_6X8, "Time:%5.1fs", runTimer_ms / 1000.0f);
+    OLED_Printf(64, 30, OLED_6X8, "%s", tracingEnabled ? "TRC:ON" : "TRC:OFF");
 
-    OLED_Printf(00, 20, OLED_6X8, "time:%d", lostLineTimes);
-    OLED_Printf(64, 20, OLED_6X8, "%s", 
-        carMode == MODE_FOLLOW ? "FOLLOW" : "LOST");
+    OLED_ShowBinNum(00, 40, gs_data, 8, OLED_6X8);
+    OLED_Printf(64, 40, OLED_6X8, "Crv:%d", curveCount);
 
     OLED_Update();
-}
-
-float AngleErrorNormalize(float target, float actual)
-{
-    float err = target - actual;
-    while (err > 180.0f)  err -= 360.0f;
-    while (err < -180.0f) err += 360.0f;
-    return err;
 }
 
 int main(void)
@@ -227,7 +211,7 @@ int main(void)
     BlueSerial_Init();
 
     // Gimbal_Init(&gimbal);
-    
+
     // // 上电初始化
     // bool init_done = false;
     // while (!init_done) {
@@ -239,20 +223,18 @@ int main(void)
     PID_Init(&rightMotorPID);
     PID_Init(&linePID);
 
-    PID_Init(&AnglePID);
-    TrapProfile_Init(&AngleProfile,0.01f,360.0f,720.0f,720.0f);
-    TrapProfile_Init(&SpeedProfile, 0.01f, 0, 50.0f, 80.0f); 
+    TrapProfile_Init(&SpeedProfile, 0.01f, 0, 10.0f, 100.0f);
     // 目标固定为黑线中心（8路灰度位置 1~8 的中点）
     linePID.Target = 4.5f;
-    linePID.Actual = Gray_Sensor_Read_All(&gs_data);
+    linePID.Actual = Gray_Sensor_Read_All(&gs_data, GS_MASK);
     linePID.Actual1 = linePID.Actual;
-    LowPassFilter_Init(&grayFilter, 0.58f, 0.1f, linePID.Actual);
+    LowPassFilter_Init(&grayFilter, 0.7f, 0.1f, linePID.Actual);
 
     NVIC_EnableIRQ(TIMER_SYS_INST_INT_IRQN);
     DL_TimerG_startCounter(TIMER_SYS_INST);
     NVIC_EnableIRQ(TIMER_1ms_INST_INT_IRQN);
     DL_TimerG_startCounter(TIMER_1ms_INST);
-    
+
     while (1)
     {
         keyProcess();
@@ -264,7 +246,25 @@ int main(void)
 
 void TIMER_1ms_INST_IRQHandler(void)
 {
-   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data));
+   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data, GS_MASK));
+   if (timerRunning) {
+       runTimer_ms++;
+   }
+   // 统计gs_data中1的个数，超过3个认为脱线
+   {
+       uint8_t ones = gs_data;
+       ones = (ones & 0x55) + ((ones >> 1) & 0x55);
+       ones = (ones & 0x33) + ((ones >> 2) & 0x33);
+       ones = (ones & 0x0F) + ((ones >> 4) & 0x0F);
+       if (tracingEnabled && ones > 3) {
+           tracingEnabled = 0;
+           timerRunning = 0;
+           TrapProfile_SpeedMode(&SpeedProfile, 0.0f);
+           leftMotorPID.Out = 0.0f;
+           rightMotorPID.Out = 0.0f;
+           linePID.Actual = 4.5f;
+       }
+   }
 }
 
 void TIMER_SYS_INST_IRQHandler(void)
@@ -272,74 +272,45 @@ void TIMER_SYS_INST_IRQHandler(void)
      // 获取实际值
     leftMotorPID.Actual = Encoder_GetCount(LEFT_ENCODER);
     rightMotorPID.Actual = Encoder_GetCount(RIGHT_ENCODER);
-
-    AnglePID.Actual = bno08x_data.yaw;
     baseSpeed = TrapProfile_SpeedUpdate(&SpeedProfile);
 
-    // // 状态转移（带消抖）
-    if (gs_data == 0) {
-        lostLineCnt++;
-        followCnt = 0;
-        if (lostLineCnt >= LOST_LINE_THRESHOLD) {
-            if (carMode == MODE_FOLLOW) {  // 只在首次进入丢线时设置
-                lostLineTimes++;
-                if (lostLineTimes % 2 == 1) {
-                // 奇数次
-                    TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
-                    TrapProfile_SetTarget(&AngleProfile, trun2);
-                } else {
-                    TrapProfile_Reset(&AngleProfile, bno08x_data.yaw);
-                    TrapProfile_SetTarget(&AngleProfile, trun1);
-                }
+    if (tracingEnabled) {
+        // 寻迹
+        PID_Update(&linePID);
+
+        // 直线检测：仅中间两路(bit3,bit4)有信号时，减弱调控防止抖动
+        // 弯道恢复需连续多次确认，过滤偶发噪声
+        // 仅 00011000 进入直线；已在直线时 0x00/0x08/0x10/0x18 保持
+        if (gs_data == 0x18) {
+            curveDebounceCnt = 0;
+        } else if (curveDebounceCnt == 0 && (gs_data == 0x00 || gs_data == 0x08 || gs_data == 0x10)) {
+            curveDebounceCnt = 0;
+        } else {
+            if (curveDebounceCnt < curveDebounceThresh) {
+                curveDebounceCnt++;
             }
-            carMode = MODE_LOST_LINE;
         }
+        if (curveDebounceCnt < curveDebounceThresh) {
+            linePID.Out *= straightFactor;
+        } else if (curveDebounceCnt == curveDebounceThresh) {
+            curveCount++;  // 首次确认弯道，计数+1
+            curveDebounceCnt++;  // 防止重复触发
+        }
+
+        leftMotorPID.Target  = baseSpeed - linePID.Out;
+        rightMotorPID.Target = baseSpeed + linePID.Out;
     } else {
-        followCnt++;
-        lostLineCnt = 0;
-        if (followCnt >= FOLLOW_THRESHOLD) {
-            carMode = MODE_FOLLOW;
-        }
-    }
-
-    // 状态执行
-    switch (carMode) {
-        case MODE_LOST_LINE: {
-            // 无黑线
-            AnglePID.Target = TrapProfile_Update(&AngleProfile);
-            float angle_err = AngleErrorNormalize(AnglePID.Target, bno08x_data.yaw);
-            AnglePID.Actual = AnglePID.Target - angle_err;
-
-            // 死区处理
-            if (fabsf(angle_err) < ANGLE_PID_DEADBAND) {
-                AnglePID.Out = 0.0f;
-                AnglePID.ErrorInt = 0.0f;
-                AnglePID.Error0 = 0.0f;
-            } else {
-                PID_Update(&AnglePID);
-            }
-
-            leftMotorPID.Target = baseSpeed + AnglePID.Out;
-            rightMotorPID.Target = baseSpeed - AnglePID.Out;
-            break;
-        }
-
-        case MODE_FOLLOW:
-        default:
-            // 有黑线：寻迹
-            PID_Update(&linePID);
-            leftMotorPID.Target  = baseSpeed - linePID.Out;
-            rightMotorPID.Target = baseSpeed + linePID.Out;
-            break;
+        leftMotorPID.Target  = 0.0f;
+        rightMotorPID.Target = 0.0f;
     }
 
     // 添加限幅保护
-    if (leftMotorPID.Target > 50.0f) leftMotorPID.Target = 50.0f;
-    if (leftMotorPID.Target < -50.0f) leftMotorPID.Target = -50.0f;
+    if (leftMotorPID.Target > 60.0f) leftMotorPID.Target = 60.0f;
+    if (leftMotorPID.Target < -60.0f) leftMotorPID.Target = -60.0f;
 
-    if (rightMotorPID.Target > 50.0f) rightMotorPID.Target = 50.0f;
-    if (rightMotorPID.Target < -50.0f) rightMotorPID.Target = -50.0f;
-    
+    if (rightMotorPID.Target > 60.0f) rightMotorPID.Target = 60.0f;
+    if (rightMotorPID.Target < -60.0f) rightMotorPID.Target = -60.0f;
+
     PID_Update(&leftMotorPID);
     PID_Update(&rightMotorPID);
 
