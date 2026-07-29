@@ -14,7 +14,7 @@ int16_t Encoder_GetCount(EncoderChannel ChannelX)
         count = (int16_t)DL_TimerG_getTimerCount(QEI_L_INST);
         DL_TimerG_setTimerCount(QEI_L_INST, 0);
     } else if (ChannelX == RIGHT_ENCODER) {
-        count = (int16_t)DL_TimerG_getTimerCount(QEI_R_INST) * -1;
+        count = (int16_t)DL_TimerG_getTimerCount(QEI_R_INST);
         DL_TimerG_setTimerCount(QEI_R_INST, 0);
     }
     return count;

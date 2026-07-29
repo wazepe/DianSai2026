@@ -5,6 +5,7 @@
 #include "key.h"
 #include "blueSerial.h"
 #include "lqkj.h"
+#include "graySensor.h"
 
 // extern Gimbal_t gimbal;
 
@@ -52,6 +53,18 @@ void UART_BNO08X_INST_IRQHandler(void)
     DL_DMA_setTransferSize(DMA, DMA_CH0_CHAN_ID, 18);
     DL_DMA_enableChannel(DMA, DMA_CH0_CHAN_ID);
 }
+#endif
+
+#ifdef UART_0_INST_IRQHandler
+
+void UART_0_INST_IRQHandler(void)
+{
+    if (DL_UART_Main_getPendingInterrupt(UART_0_INST) == DL_UART_MAIN_IIDX_RX) {
+        Gray_Sensor_IRQHandler(DL_UART_Main_receiveData(UART_0_INST));
+        DL_UART_Main_clearInterruptStatus(UART_0_INST, DL_UART_MAIN_INTERRUPT_RX);
+    }
+}
+
 #endif
 
 #ifdef UART_BLE_INST_IRQHandler
