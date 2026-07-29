@@ -16,7 +16,6 @@
 #define IR_MASK_CURVE     0x7E  // 0b01111110, 弯道: 中间6路(通道1~6)
 uint8_t ir_curMask = IR_MASK_STRAIGHT;
 
-uint8_t keyNum;
 uint16_t distVal = 0;
 
 uint8_t ir_data;
@@ -70,10 +69,6 @@ PID_t linePID = {
     .Ki = 0.015f,
     .Kd = 1.3f,
 
-    // .Kp = 2.50f,            
-    // .Ki = 0.01f,
-    // .Kd = 1.2f,
-
     .OutMax = 100.0f,
     .OutMin = -100.0f,
 
@@ -88,7 +83,6 @@ PID_t linePID = {
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
-        keyNum = 1;
         runTimer_ms = 0;
         timerRunning = 1;
         tracingEnabled = 1;
@@ -96,7 +90,6 @@ void keyProcess(void)
         TrapProfile_SpeedMode(&SpeedProfile, speed);
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
-        keyNum = 2;
         runTimer_ms = 0;
         timerRunning = 1;
         tracingEnabled = 1;
@@ -104,10 +97,9 @@ void keyProcess(void)
         TrapProfile_SpeedMode(&SpeedProfile, speed2);
     }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
-        keyNum = 4;
         timerRunning = 0;
         tracingEnabled = 0;
-        TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // 平滑到0
+        TrapProfile_SpeedMode(&SpeedProfile, 0.0f);
         leftMotorPID.Out = 0.0f;
         rightMotorPID.Out = 0.0f;
         linePID.Actual = 4.5f;
@@ -121,10 +113,8 @@ void BSProcess(void)
             uint8_t val = atoi(pkt.fields[1]);
             if (val == 1) {
                 linePID.Kp = atof(pkt.fields[2]);
-                // target_pitch = atof(pkt.fields[2]);
             } else if (val == 2) {
                 linePID.Ki = atof(pkt.fields[2]);
-                // target_yaw = atof(pkt.fields[2]);
             } else if (val == 3) {
                 linePID.Kd = atof(pkt.fields[2]);
             } else if (val == 4) {
@@ -140,7 +130,7 @@ void BSProcess(void)
             if (keyval == 1){
                 timerRunning = 0;
                 tracingEnabled = 0;
-                TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // ← 加上这行
+                TrapProfile_SpeedMode(&SpeedProfile, 0.0f);
                 leftMotorPID.Out = 0.0f;
                 rightMotorPID.Out = 0.0f;
                 linePID.Actual = 4.5f;
@@ -153,7 +143,7 @@ void BSProcess(void)
             }
         }
     }
-    BlueSerial_Printf("[%s]", pkt.fields[0]);
+    // BlueSerial_Printf("[%s]", pkt.fields[0]);
 }
 
 void oledProcess(void)
@@ -188,16 +178,6 @@ int main(void)
     Encoder_Init();
     Motor_Init();
     BlueSerial_Init();
-    // Gray_Sensor_Init();
-
-    // Gimbal_Init(&gimbal);
-
-    // // 上电初始化
-    // bool init_done = false;
-    // while (!init_done) {
-    //     init_done = Gimbal_PowerOnInit(&gimbal, g_sysTick_1ms_u32);
-    //     Gimbal_Poll(&gimbal, g_sysTick_1ms_u32);
-    // }
 
     PID_Init(&leftMotorPID);
     PID_Init(&rightMotorPID);
@@ -297,10 +277,3 @@ void TIMER_SYS_INST_IRQHandler(void)
 
     Load(leftMotorPID.Out, rightMotorPID.Out);
 }
-
-/*
-    bug：偶尔会出现不寻迹的情况，怀疑是1，硬件接触不良，2，新加的串口中断阻塞；蓝牙按键无法使用
-    仅 00011000 进入直线模式，00000000,00010000,00001000,00011000保持直线模式，
-    直线模式：PID减弱，且仅中间4个传感器进入计算
-    其余情况连续4次，切换弯道模式：PID恢复，且仅中间6个传感器进入计算
-*/
