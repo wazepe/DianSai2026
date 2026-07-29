@@ -13,7 +13,9 @@
 #include "filter.h"
 #include "trap_profile.h"
 
-#define GS_MASK 0x3C  // 0b00111100, 只取中间4路(通道2~5)计算位置
+#define GS_MASK_STRAIGHT  0x3C  // 0b00111100, 直线: 中间4路(通道2~5)
+#define GS_MASK_CURVE     0x7E  // 0b01111110, 弯道: 中间6路(通道1~6)
+uint8_t gs_curMask = GS_MASK_STRAIGHT;
 
 uint8_t keyNum;
 uint16_t distVal = 0;
@@ -25,8 +27,8 @@ uint32_t runTimer_ms = 0;    // 运行计时器(ms)
 uint8_t  timerRunning = 0;   // 计时器运行标志
 uint8_t  tracingEnabled = 0; // 寻迹使能: 0=关闭, 1=开启
 
-float speed = 20.0f;
-float speed2 = 15.0f;
+float speed = 28.0f;
+float speed2 = 20.0f;
 float straightFactor = 0.35f;     // 直线PID削弱系数
 uint8_t  curveDebounceCnt = 0;     // 弯道确认计数
 uint8_t  curveDebounceThresh = 4;  // 弯道确认阈值(连续非直线次数)
@@ -46,8 +48,8 @@ PID_t leftMotorPID = {
 
     .OutOffset = 0.0f,
 
-    .ErrorIntMax = 800.0f,
-    .ErrorIntMin = -800.0f,
+    .ErrorIntMax = 250.0f,
+    .ErrorIntMin = -250.0f,
 };
 
 PID_t rightMotorPID = {
@@ -60,8 +62,8 @@ PID_t rightMotorPID = {
 
     .OutOffset = 0.0f,
 
-    .ErrorIntMax = 800.0f,
-    .ErrorIntMin = -800.0f,
+    .ErrorIntMax = 250.0f,
+    .ErrorIntMin = -250.0f,
 };
 
 PID_t linePID = {
@@ -106,13 +108,6 @@ void keyProcess(void)
         curveCount = 0;
         TrapProfile_SpeedMode(&SpeedProfile, speed2);
     }
-    // if (Key_Check(GPIO_KEY_III_PIN, KEY_SINGLE)) {
-    //     keyNum = 3;
-    //     runTimer_ms = 0;
-    //     timerRunning = 1;
-    //     tracingEnabled = 1;
-    //     TrapProfile_SpeedMode(&SpeedProfile, 30.0f);
-    // }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
         keyNum = 4;
         timerRunning = 0;
@@ -132,34 +127,7 @@ void ultrasonicProcess(void)
 
 void BSProcess(void)
 {
-    // while (BlueSerial_ReadPacket(&pkt)) {
-    //     if (strcmp(pkt.fields[0], "slider") == 0) {
-    //         uint8_t val = atoi(pkt.fields[1]);
-    //         if (val == 1) {
-    //             linePID.Kp = atof(pkt.fields[2]);
-    //         } else if (val == 2) {
-    //             linePID.Ki = atof(pkt.fields[2]);
-    //         } else if (val == 3) {
-    //             linePID.Kd = atof(pkt.fields[2]);
-    //         } else if (val == 4) {
-    //             grayFilter.alpha = atof(pkt.fields[2]);
-    //         }
-    //     }
-    //     if (strcmp(pkt.fields[0], "key") == 0) {
-    //         uint8_t keyval = atoi(pkt.fields[1]);
-    //         if (keyval == 1){
-    //             baseSpeed = 0.0f;
-    //             leftMotorPID.Target = 0.0f;
-    //             rightMotorPID.Target = 0.0f;
-    //             leftMotorPID.Out = 0.0f;
-    //             rightMotorPID.Out = 0.0f;
-    //             linePID.Actual = 4.5f;
-    //         }
-    //     }
-    // }
-    // BlueSerial_Printf("[plot,%f,%f]", linePID.Target, linePID.Actual);
     while (BlueSerial_ReadPacket(&pkt)) {
-        BlueSerial_Printf("[%s]", pkt.fields[0]);
         if (strcmp(pkt.fields[0], "slider") == 0) {
             uint8_t val = atoi(pkt.fields[1]);
             if (val == 1) {
@@ -177,9 +145,8 @@ void BSProcess(void)
             } else if (val == 6) {
                 curveDebounceThresh = (uint8_t)atoi(pkt.fields[2]);
             }
-
         }
-        if (strcmp(pkt.fields[0], "key") == 0) {
+        else if (strcmp(pkt.fields[0], "key") == 0) {
             uint8_t keyval = atoi(pkt.fields[1]);
             if (keyval == 1){
                 timerRunning = 0;
@@ -197,8 +164,7 @@ void BSProcess(void)
             }
         }
     }
-    
-    
+    BlueSerial_Printf("[%s]", pkt.fields[0]);
 }
 
 void oledProcess(void)
@@ -234,6 +200,7 @@ int main(void)
     Motor_Init();
     Ultrasonic_Init();
     BlueSerial_Init();
+    Gray_Sensor_Init();
 
     // Gimbal_Init(&gimbal);
 
@@ -251,9 +218,9 @@ int main(void)
     TrapProfile_Init(&SpeedProfile, 0.01f, 0, 10.0f, 100.0f);
     // 目标固定为黑线中心（8路灰度位置 1~8 的中点）
     linePID.Target = 4.5f;
-    linePID.Actual = Gray_Sensor_Read_All(&gs_data, GS_MASK);
+    linePID.Actual = Gray_Sensor_Read_All(&gs_data, gs_curMask);
     linePID.Actual1 = linePID.Actual;
-    LowPassFilter_Init(&grayFilter, 0.7f, 0.1f, linePID.Actual);
+    LowPassFilter_Init(&grayFilter, 0.68f, 0.1f, linePID.Actual);
 
     NVIC_EnableIRQ(TIMER_SYS_INST_INT_IRQN);
     DL_TimerG_startCounter(TIMER_SYS_INST);
@@ -271,7 +238,7 @@ int main(void)
 
 void TIMER_1ms_INST_IRQHandler(void)
 {
-   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data, GS_MASK));
+   linePID.Actual = LowPassFilter_Update(&grayFilter,Gray_Sensor_Read_All(&gs_data, gs_curMask));
    if (timerRunning) {
        runTimer_ms++;
    }
@@ -317,9 +284,11 @@ void TIMER_SYS_INST_IRQHandler(void)
         }
         if (curveDebounceCnt < curveDebounceThresh) {
             linePID.Out *= straightFactor;
+            gs_curMask = GS_MASK_STRAIGHT;    // 直线/过渡期用4路
         } else if (curveDebounceCnt == curveDebounceThresh) {
-            curveCount++;  // 首次确认弯道，计数+1
-            curveDebounceCnt++;  // 防止重复触发
+            curveCount++;
+            curveDebounceCnt++;
+            gs_curMask = GS_MASK_CURVE;       // 确认弯道，切6路
         }
 
         leftMotorPID.Target  = baseSpeed - linePID.Out;
@@ -343,3 +312,10 @@ void TIMER_SYS_INST_IRQHandler(void)
 
     // Gimbal_SetTarget(&gimbal, target_yaw, target_pitch, speed);
 }
+
+/*
+    bug：偶尔会出现不寻迹的情况，怀疑是1，硬件接触不良，2，新加的串口中断阻塞；蓝牙按键无法使用
+    仅 00011000 进入直线模式，00000000,00010000,00001000,00011000保持直线模式，
+    直线模式：PID减弱，且仅中间4个传感器进入计算
+    其余情况连续4次，切换弯道模式：PID恢复，且仅中间6个传感器进入计算
+*/

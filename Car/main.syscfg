@@ -257,6 +257,9 @@ UART1.DMA_CHANNEL_RX.dstLength         = "BYTE";
 UART1.DMA_CHANNEL_RX.addressMode       = "f2b";
 
 UART2.$name                            = "UART_0";
+UART2.targetBaudRate                   = 115200;
+UART2.enabledInterrupts                = ["RX"];
+UART2.interruptPriority                = "1";
 UART2.peripheral.$assign               = "UART0";
 UART2.peripheral.rxPin.$assign         = "PA11";
 UART2.peripheral.txPin.$assign         = "PA10";
