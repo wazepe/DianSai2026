@@ -133,47 +133,7 @@ void ultrasonicProcess(void)
 
 void BSProcess(void)
 {
-    if (BlueSerial_IsPacketReady()) {
-        if (BlueSerial_ParsePacket(&pkt)) {
-            if (strcmp(pkt.fields[0], "slider") == 0) {
-                uint8_t val = atoi(pkt.fields[1]);
-                if (val == 1) {
-                    linePID.Kp = atof(pkt.fields[2]);
-                    // target_pitch = atof(pkt.fields[2]);
-                } else if (val == 2) {
-                    linePID.Ki = atof(pkt.fields[2]);
-                    // target_yaw = atof(pkt.fields[2]);
-                } else if (val == 3) {
-                    linePID.Kd = atof(pkt.fields[2]);
-                } else if (val == 4) {
-                    speed = atof(pkt.fields[2]);
-                } else if (val == 5) {
-                    straightFactor = atof(pkt.fields[2]);
-                } else if (val == 6) {
-                    curveDebounceThresh = (uint8_t)atoi(pkt.fields[2]);
-                }
 
-            }
-            if (strcmp(pkt.fields[0], "key") == 0) {
-                uint8_t keyval = atoi(pkt.fields[1]);
-                if (keyval == 1){
-                    timerRunning = 0;
-                    tracingEnabled = 0;
-                    TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // ← 加上这行
-                    leftMotorPID.Out = 0.0f;
-                    rightMotorPID.Out = 0.0f;
-                    linePID.Actual = 4.5f;
-                }
-                if (keyval == 2){
-                    runTimer_ms = 0;
-                    timerRunning = 1;
-                    tracingEnabled = 1;
-                    TrapProfile_SpeedMode(&SpeedProfile, speed);
-                }
-            }
-        }
-    }
-    // BlueSerial_Printf("[plot,%d]", lostLineTimes);
 }
 
 void oledProcess(void)
