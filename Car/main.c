@@ -83,6 +83,7 @@ PID_t linePID = {
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
+        TrapProfile_Init(&SpeedProfile, 0.01f, 0, 30.0f, 200.0f);
         runTimer_ms = 0;
         timerRunning = 1;
         tracingEnabled = 1;
@@ -90,6 +91,7 @@ void keyProcess(void)
         TrapProfile_SpeedMode(&SpeedProfile, speed);
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
+        TrapProfile_Init(&SpeedProfile, 0.01f, 0, 4.0f, 8.0f);
         runTimer_ms = 0;
         timerRunning = 1;
         tracingEnabled = 1;
@@ -209,19 +211,17 @@ void TIMER_1ms_INST_IRQHandler(void)
    if (timerRunning) {
        runTimer_ms++;
    }
-   // 统计gs_data中1的个数，超过3个认为脱线
+   // 统计gs_data中1的个数，超过3个或者全0认为到达或者脱线
    {
        uint8_t ones = ir_data;
        ones = (ones & 0x55) + ((ones >> 1) & 0x55);
        ones = (ones & 0x33) + ((ones >> 2) & 0x33);
        ones = (ones & 0x0F) + ((ones >> 4) & 0x0F);
-       if (tracingEnabled && ones > 3) {
-           tracingEnabled = 0;
-           timerRunning = 0;
-           TrapProfile_SpeedMode(&SpeedProfile, 0.0f);
-           leftMotorPID.Out = 0.0f;
-           rightMotorPID.Out = 0.0f;
-           linePID.Actual = 4.5f;
+       if (tracingEnabled && (ones > 3 || ones == 0)) {
+            timerRunning = 0;
+            TrapProfile_SpeedMode(&SpeedProfile, 0.0f);
+            linePID.Out = 0.0f;
+            linePID.Actual = 4.5f;
        }
    }
 }
@@ -260,6 +260,11 @@ void TIMER_SYS_INST_IRQHandler(void)
 
         leftMotorPID.Target  = baseSpeed - linePID.Out;
         rightMotorPID.Target = baseSpeed + linePID.Out;
+
+        // 梯形减速到0后关闭寻迹
+        if (!timerRunning && baseSpeed <= 0.0f) {
+            tracingEnabled = 0;
+        }
     } else {
         leftMotorPID.Target  = 0.0f;
         rightMotorPID.Target = 0.0f;
