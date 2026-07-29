@@ -67,14 +67,13 @@ float Infrared_Read_All(uint8_t *sensor_value, uint8_t mask)
         return lastWeightedValue;
     }
 
-    /* 从红外状态寄存器读取8bit原始值 */
     activeValue = Infrared_ReadReg(Infrared_Status_RegAddress);
     *sensor_value = activeValue;
 
     for (uint8_t i = 0; i < 8; i++) {
         if ((activeValue & mask & (0x01u << i)) != 0u) {
             count++;
-            weightedValue += (float)(i + 1);
+            weightedValue += (float)(8 - i);  /* 位0权重8，位7权重1 */
         }
     }
 
