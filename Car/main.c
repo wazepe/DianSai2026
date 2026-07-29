@@ -13,6 +13,8 @@
 #include "filter.h"
 #include "trap_profile.h"
 
+#define GS_MASK 0x3C  // 0b00111100, 只取中间4路(通道2~5)计算位置
+
 uint8_t keyNum;
 uint16_t distVal = 0;
 
@@ -85,9 +87,6 @@ PID_t linePID = {
 Gimbal_t gimbal;
 float target_yaw = 0.0f;
 float target_pitch = 0.0f;
-// int16_t speed = 200;         // RPM
-
-#define GS_MASK 0x3C  // 0b00111100, 只取中间4路(通道2~5)计算位置
 
 void keyProcess(void)
 {
@@ -160,6 +159,7 @@ void BSProcess(void)
     // }
     // BlueSerial_Printf("[plot,%f,%f]", linePID.Target, linePID.Actual);
     while (BlueSerial_ReadPacket(&pkt)) {
+        BlueSerial_Printf("[%s]", pkt.fields[0]);
         if (strcmp(pkt.fields[0], "slider") == 0) {
             uint8_t val = atoi(pkt.fields[1]);
             if (val == 1) {
@@ -198,7 +198,7 @@ void BSProcess(void)
         }
     }
     
-    // BlueSerial_Printf("[plot,%d]", lostLineTimes);
+    
 }
 
 void oledProcess(void)
