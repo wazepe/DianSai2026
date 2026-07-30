@@ -32,6 +32,7 @@ typedef struct {
 extern volatile uint8_t  bleDmaRxBuf[BLUE_SERIAL_DMA_BUF_SIZE];
 extern volatile uint16_t bleDmaRxLen;      // 本次 timeout 接收到的字节数
 extern volatile uint8_t  bleDmaRxReady;    // 数据就绪标志
+extern volatile uint16_t bleDmaConsumeIdx;
 
 // 函数声明
 void BlueSerial_Init(void);

@@ -11,7 +11,7 @@ volatile uint8_t  bleDmaRxReady = 0;
 static char packetBuffer[BLUE_SERIAL_MAX_STRING_LEN];
 static uint16_t packetIndex = 0;
 static PacketState_t packetState = PACKET_STATE_IDLE;
-static uint16_t consumeIdx = 0;  // 当前在 bleDmaRxBuf 中的消费位置
+volatile uint16_t bleDmaConsumeIdx = 0;  // 当前在 bleDmaRxBuf 中的消费位置
 
 // ==================== 初始化 ====================
 void BlueSerial_Init(void)
@@ -20,7 +20,7 @@ void BlueSerial_Init(void)
     memset(packetBuffer, 0, BLUE_SERIAL_MAX_STRING_LEN);
     packetIndex = 0;
     packetState = PACKET_STATE_IDLE;
-    consumeIdx = 0;
+    bleDmaConsumeIdx = 0;
 
     // 启动 DMA 循环接收
     BlueSerial_DMA_Init();
@@ -29,21 +29,21 @@ void BlueSerial_Init(void)
 // ==================== DMA 接收初始化 ====================
 void BlueSerial_DMA_Init(void)
 {
-    // 1. 配置 DMA 循环接收
     DL_DMA_disableChannel(DMA, BLUE_SERIAL_DMA_CHAN);
+    
     DL_DMA_setSrcAddr(DMA, BLUE_SERIAL_DMA_CHAN, (uint32_t)&UART_BLE_INST->RXDATA);
     DL_DMA_setDestAddr(DMA, BLUE_SERIAL_DMA_CHAN, (uint32_t)bleDmaRxBuf);
     DL_DMA_setTransferSize(DMA, BLUE_SERIAL_DMA_CHAN, BLUE_SERIAL_DMA_BUF_SIZE);
 
-    // 配置为 Repeat Single：UART 每收到 1 字节触发一次 DMA，搬运 1 字节
-    // 与 BNO08X 的 Repeat Block（整包触发）不同，蓝牙是流式字节
     DL_DMA_setTransferMode(DMA, BLUE_SERIAL_DMA_CHAN,
                            DL_DMA_FULL_CH_REPEAT_SINGLE_TRANSFER_MODE);
 
-    DL_DMA_enableChannel(DMA, BLUE_SERIAL_DMA_CHAN);
+    // 【新增】显式设置地址增量，防止被 Syscfg/Mode 改写覆盖
+    DL_DMA_setSrcIncrement(DMA, BLUE_SERIAL_DMA_CHAN, DL_DMA_ADDR_UNCHANGED);
+    DL_DMA_setDestIncrement(DMA, BLUE_SERIAL_DMA_CHAN, DL_DMA_ADDR_INCREMENT);
 
-    // 2. UART 中断已由 SysConfig 初始化（IMASK.RTIM=1, DMA_RX_IMASK.RXINT=1）
-    //    只需确认 NVIC 已使能（SysConfig 已做，此处保底）
+    DL_DMA_enableChannel(DMA, BLUE_SERIAL_DMA_CHAN);
+    
     NVIC_SetPriority(UART_BLE_INST_INT_IRQN, 2);
     NVIC_EnableIRQ(UART_BLE_INST_INT_IRQN);
 }
@@ -57,15 +57,15 @@ static void BlueSerial_DMA_Poll(void)
     }
 
     // 从上次断点继续消费
-    while (consumeIdx < bleDmaRxLen) {
-        uint8_t ch = bleDmaRxBuf[consumeIdx];
+    while (bleDmaConsumeIdx < bleDmaRxLen) {
+        uint8_t ch = bleDmaRxBuf[bleDmaConsumeIdx];
 
         // 遇到完整包就暂停，等 ParsePacket 重置状态机后再继续
         if (packetState == PACKET_STATE_COMPLETE) {
             break;
         }
 
-        consumeIdx++;
+        bleDmaConsumeIdx++;
 
         switch (packetState) {
             case PACKET_STATE_IDLE:
@@ -95,9 +95,9 @@ static void BlueSerial_DMA_Poll(void)
     }
 
     // 本次 DMA 数据全部消费完毕 → 清除 flag，重置消费索引
-    if (consumeIdx >= bleDmaRxLen) {
+    if (bleDmaConsumeIdx >= bleDmaRxLen) {
         bleDmaRxReady = 0;
-        consumeIdx = 0;
+        bleDmaConsumeIdx = 0;
     }
 }
 

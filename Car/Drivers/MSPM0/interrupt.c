@@ -72,6 +72,7 @@ void UART_BLE_INST_IRQHandler(void)
         if (rxSize > 0) {
             bleDmaRxLen   = rxSize;
             bleDmaRxReady = 1;
+            bleDmaConsumeIdx = 0;   // 【新增】新数据从头开始消费
         }
 
         // 5. 重置 DMA 到缓冲区头部（覆盖式，模仿 BNO08X）

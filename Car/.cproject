@@ -41,6 +41,7 @@
                                     <listOptionValue value="${SYSCONFIG_TOOL_INCLUDE_PATH}"/>
                                     <listOptionValue value="${COM_TI_MSPM0_SDK_INCLUDE_PATH}"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/MSPM0"/>
+                                    <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/Stepper"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/Motor"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/Key"/>
                                     <listOptionValue value="${PROJECT_ROOT}/Drivers/Components/Infrared"/>
@@ -102,7 +103,7 @@
                         </toolChain>
                     </folderInfo>
                     <sourceEntries>
-                        <entry excluding="Drivers/Components/GraySensor|Drivers/Components/YT|Drivers/Components/Ultrasonic|Drivers/Components/Stepper" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+                        <entry excluding="Drivers/Components/GraySensor|Drivers/Components/YT|Drivers/Components/Ultrasonic" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
                     </sourceEntries>
                 </configuration>
             </storageModule>

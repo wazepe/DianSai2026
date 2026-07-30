@@ -7,6 +7,7 @@
 #include "motor.h"
 #include "infrared.h"
 #include "blueSerial.h"
+#include "stepper.h"
 
 #include "pid.h"
 #include "filter.h"
@@ -85,6 +86,8 @@ PID_t linePID = {
     .Target = 4.5f,
 };
 
+uint16_t up_d, down_d;
+
 void keyProcess(void)
 {
     if (Key_Check(GPIO_KEY_I_PIN, KEY_SINGLE)) {
@@ -94,6 +97,7 @@ void keyProcess(void)
         tracingEnabled = 1;
         curveCount = 0;
         TrapProfile_SpeedMode(&SpeedProfile, speed);
+        stepper_pos_ctrl(STEPPER_ADDR, STEPPER_CW, up_d, 280, STEPPER_USTEP_32); // 上
     }
     if (Key_Check(GPIO_KEY_II_PIN, KEY_SINGLE)) {
         keyNum = 2;
@@ -102,6 +106,7 @@ void keyProcess(void)
         tracingEnabled = 1;
         curveCount = 0;
         TrapProfile_SpeedMode(&SpeedProfile, speed2);
+        stepper_pos_ctrl(STEPPER_ADDR, STEPPER_CCW, down_d, 280, STEPPER_USTEP_32); // 下
     }
     if (Key_Check(GPIO_KEY_IV_PIN, KEY_SINGLE)) {
         keyNum = 4;
@@ -111,68 +116,32 @@ void keyProcess(void)
         leftMotorPID.Out = 0.0f;
         rightMotorPID.Out = 0.0f;
         linePID.Actual = 4.5f;
+        stepper_stop(STEPPER_ADDR);
     }
 }
 
 void BSProcess(void)
 {
     while (BlueSerial_ReadPacket(&pkt)) {
-        if (strcmp(pkt.fields[0], "slider") == 0) {
-            uint8_t val = atoi(pkt.fields[1]);
-            if (val == 1) {
-                linePID.Kp = atof(pkt.fields[2]);
-                // target_pitch = atof(pkt.fields[2]);
-            } else if (val == 2) {
-                linePID.Ki = atof(pkt.fields[2]);
-                // target_yaw = atof(pkt.fields[2]);
-            } else if (val == 3) {
-                linePID.Kd = atof(pkt.fields[2]);
-            } else if (val == 4) {
-                speed = atof(pkt.fields[2]);
-            } else if (val == 5) {
-                straightFactor = atof(pkt.fields[2]);
-            } else if (val == 6) {
-                curveDebounceThresh = (uint8_t)atoi(pkt.fields[2]);
-            }
-        }
-        else if (strcmp(pkt.fields[0], "key") == 0) {
-            uint8_t keyval = atoi(pkt.fields[1]);
-            if (keyval == 1){
-                timerRunning = 0;
-                tracingEnabled = 0;
-                TrapProfile_SpeedMode(&SpeedProfile, 0.0f);  // ← 加上这行
-                leftMotorPID.Out = 0.0f;
-                rightMotorPID.Out = 0.0f;
-                linePID.Actual = 4.5f;
-            }
-            if (keyval == 2){
-                runTimer_ms = 0;
-                timerRunning = 1;
-                tracingEnabled = 1;
-                TrapProfile_SpeedMode(&SpeedProfile, speed);
-            }
-        }
+        OLED_Printf(00, 0, OLED_6X8, "[0]:%s", pkt.fields[0]);
+        OLED_Printf(00, 10, OLED_6X8, "[1]:%s", pkt.fields[1]);
+        OLED_Printf(00, 20, OLED_6X8, "[2]:%s", pkt.fields[2]);
+
+        // if (strcmp(pkt.fields[0], "slider") == 0) {
+        //     uint8_t val = atoi(pkt.fields[1]);
+        //     if (val == 1) {
+        //         up_d = atoi(pkt.fields[2]);
+        //     } else if (val == 2) {
+        //         down_d = atoi(pkt.fields[2]);
+        //     }
+        // }
     }
-    BlueSerial_Printf("[%s]", pkt.fields[0]);
 }
 
 void oledProcess(void)
 {
-    OLED_Printf(00, 0, OLED_6X8, "Spd:%3.1f", speed);
-    OLED_Printf(64, 0, OLED_6X8, "Spd2:%3.1f", speed2);
-
-    OLED_Printf(00, 10, OLED_6X8, "Lkp:%5.3f", linePID.Kp);
-    OLED_Printf(64, 10, OLED_6X8, "Lki:%5.3f", linePID.Ki);
-
-    OLED_Printf(00, 20, OLED_6X8, "Lkd:%5.3f", linePID.Kd);
-    OLED_Printf(64, 20, OLED_6X8, "SF:%4.2f", straightFactor);
-
-    // 显示运行时间 (秒, 保留1位小数)
-    OLED_Printf(00, 30, OLED_6X8, "Time:%5.1fs", runTimer_ms / 1000.0f);
-    OLED_Printf(64, 30, OLED_6X8, "%s", tracingEnabled ? "TRC:ON" : "TRC:OFF");
-
-    OLED_ShowBinNum(00, 40, ir_data, 8, OLED_6X8);
-    OLED_Printf(64, 40, OLED_6X8, "Crv:%d", curveCount);
+    // OLED_Printf(00, 0, OLED_6X8, "  Up:%05d", up_d);
+    // OLED_Printf(64, 0, OLED_6X8, "Down:%05d", down_d);
 
     OLED_Update();
 }
@@ -295,12 +264,5 @@ void TIMER_SYS_INST_IRQHandler(void)
     PID_Update(&leftMotorPID);
     PID_Update(&rightMotorPID);
 
-    Load(leftMotorPID.Out, rightMotorPID.Out);
+    // Load(leftMotorPID.Out, rightMotorPID.Out);
 }
-
-/*
-    bug：偶尔会出现不寻迹的情况，怀疑是1，硬件接触不良，2，新加的串口中断阻塞；蓝牙按键无法使用
-    仅 00011000 进入直线模式，00000000,00010000,00001000,00011000保持直线模式，
-    直线模式：PID减弱，且仅中间4个传感器进入计算
-    其余情况连续4次，切换弯道模式：PID恢复，且仅中间6个传感器进入计算
-*/
